@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Researcher dashboard</h1>
+  <div class="stats">
+    <div><b>{{ users|length }}</b><span>registered</span></div>
+    <div><b>{{ done|length }}</b><span>completed (target 150)</span></div>
+    <div><b>{{ '%.0f'|format(mean_post) if mean_post is not none else '—' }}%</b><span>mean final check</span></div>
+    <div><b>{{ '%.0f'|format(mean_minutes) if mean_minutes is not none else '—' }}</b><span>mean minutes</span></div>
+  </div>
+  <p class="small muted">By stage: {% for k, v in stages.items() %}{{ k }} {{ v }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  <a class="link" href="{{ url_for('admin.logout') }}">Log out of admin</a>
+</section>
+
+<section class="card">
+  <h2>Export data (engine format)</h2>
+  <div class="row wrap">
+    <a class="btn small" href="{{ url_for('admin.export', what='responses') }}">responses.csv</a>
+    <a class="btn small" href="{{ url_for('admin.export', what='users') }}">users.csv</a>
+    <a class="btn small ghost" href="{{ url_for('admin.export', what='final') }}">final_checks.csv</a>
+    <a class="btn small ghost" href="{{ url_for('admin.export', what='prior') }}">prior_knowledge.csv</a>
+    <a class="btn small ghost" href="{{ url_for('admin.export', what='questions') }}">generated_questions.csv</a>
+  </div>
+  <p class="small muted">Completed, non-excluded users only. Run <code>python scripts/run_evaluation.py --responses responses.csv --users users.csv</code> for H1–H5.</p>
+</section>
+
+<section class="card">
+  <h2>Calibration</h2>
+  {% if calib.calibrated %}<p>Last calibrated {{ calib.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC on {{ calib.n_users }} users.</p>
+  {% else %}<p>Not calibrated yet: scoring uses neutral defaults. Calibrate after the pilot or once at least {{ min_users }} users finish.</p>{% endif %}
+  <form method="post" action="{{ url_for('admin.calibrate') }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn small">Calibrate IRT, BKT and Random Forest now</button></form>
+</section>
+
+<section class="card">
+  <h2>Results by explanation type (main checks)</h2>
+  <table class="tbl"><tr><th>Type</th><th>% correct</th><th>Mean confidence</th><th>Mean trust</th><th>Answers</th></tr>
+  {% for k, (p, c, t, n) in stats.by_type.items() %}
+  <tr><td>{{ k }}</td><td>{{ '%.1f'|format(p) if p is not none else '—' }}</td><td>{{ '%.2f'|format(c) if c is not none else '—' }}</td><td>{{ '%.2f'|format(t) if t is not none else '—' }}</td><td>{{ n }}</td></tr>
+  {% endfor %}</table>
+</section>
+
+<section class="card">
+  <h2>Item statistics (24 templates)</h2>
+  <p class="small muted">Items answered correctly by almost everyone (&gt; 90%) or almost no one (&lt; 20%) may need rewording after the pilot.</p>
+  <table class="tbl"><tr><th>Item</th><th>n</th><th>% correct</th><th>Confidence</th><th>Trust</th></tr>
+  {% for r in stats['items'] %}<tr class="{{ 'warn' if r.p > 0.9 or r.p < 0.2 }}"><td>{{ r.item_id }}</td><td>{{ r.n }}</td><td>{{ '%.0f'|format(r.p*100) }}</td><td>{{ '%.2f'|format(r.conf) }}</td><td>{{ '%.2f'|format(r.trust) }}</td></tr>{% endfor %}
+  </table>
+</section>
+
+<section class="card">
+  <h2>Users needing support (final check below 70%)</h2>
+  {% if support %}<table class="tbl"><tr><th>User</th><th>Final check</th><th>Warm-up</th></tr>
+  {% for u in support %}<tr><td>{{ u.code }}</td><td>{{ '%.0f'|format(u.post_score*100) }}%</td><td>{{ u.prior_score }}/10</td></tr>{% endfor %}</table>
+  {% else %}<p class="muted">None yet.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>All participants</h2>
+  <table class="tbl"><tr><th>Code</th><th>Stage</th><th>Round</th><th>Final</th><th></th></tr>
+  {% for u in users %}<tr class="{{ 'muted' if u.excluded }}"><td>{{ u.code }}</td><td>{{ u.stage }}</td><td>{{ u.round }}/12</td><td>{{ '%.0f'|format(u.post_score*100) ~ '%' if u.post_score is not none else '—' }}</td>
+  <td><form method="post" action="{{ url_for('admin.exclude', uid=u.id) }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link-btn">{{ 'Include' if u.excluded else 'Exclude' }}</button></form></td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

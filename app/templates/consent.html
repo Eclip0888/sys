@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Informed consent</h1>
+  <p>You are invited to take part in a study by BS Computer Science students of Pamantasan ng Lungsod ng Muntinlupa. The study tests an AI assistant that checks whether users understand the explanations of AI predictions.</p>
+  <h3>What you will do</h3>
+  <p>Answer a short profile and a 10-item warm-up, ask the AI 12 questions about a student's study habits, answer two short questions after each AI answer (with how sure you are and how much you trust the explanation), and finish a 6-item final check. This takes about 40 minutes in one sitting.</p>
+  <h3>Your data</h3>
+  <p>We store your answers, ratings, profile and the time of each answer under a code (for example U0012), never your name. The data are used only for this thesis, reported only as group results, and handled under the Data Privacy Act of 2012 (RA 10173).</p>
+  <h3>Your rights</h3>
+  <p>Taking part is voluntary and does not affect your grades. You may stop at any time by closing the page, and you may ask the researchers to delete your data.</p>
+  <p class="muted small">The AI's predictions are based on a study model and are not real advice about your own grades.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="check"><input type="checkbox" name="agree" value="yes" required> I have read the information above, I am 18 or older, and I agree to take part.</label>
+    <button class="btn wide">Continue</button>
+  </form>
+</section>
+{% endblock %}

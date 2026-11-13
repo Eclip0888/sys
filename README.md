@@ -1,0 +1,99 @@
+# XAI-Check
+
+A web-based AI Assistant that checks whether users understand its explanations. It was built for the thesis
+*Augmentation of Item Response Theory and Bayesian Knowledge Tracing with Explainable Random Forest in an AI
+Assistant for Automated Evaluation of User Comprehension of AI Outputs* (BS Computer Science, Pamantasan ng
+Lungsod ng Muntinlupa).
+
+## What a participant does (about 40 minutes)
+
+1. Creates an account, agrees to the consent form and fills in a short profile.
+2. Answers a 10-item warm-up on AI basics (the prior knowledge check).
+3. Reads a short tutorial on SHAP, LIME and counterfactual explanations.
+4. Asks the AI 12 questions in their own words, for example "Will I pass if I study 6 hours a week and
+   have 3 absences?". For each question the AI:
+   - reads the numbers in the question, and the user confirms or edits them;
+   - predicts PASS or FAIL and explains the prediction with SHAP, LIME or a counterfactual (rotating);
+   - automatically generates two comprehension questions about that explanation, one of low and one of
+     high complexity, from 24 calibrated templates;
+   - collects the answer, the user's confidence (1–5) and their trust in the explanation (1–5), and
+     shows immediate feedback.
+5. Takes a final check: a new student explained in all three ways, with 6 questions (the post-test).
+6. Sees their results: final check score, mastery per explanation type and, after calibration, the
+   Random Forest estimate.
+
+Every user answers each of the 24 templates exactly once, 8 per explanation type, so the templates can be
+calibrated as IRT items.
+
+## Project layout
+
+```
+app/
+  predictor.py   AI model (Random Forest, PASS/FAIL), question parser, SHAP / LIME / counterfactual
+  questions.py   24 question templates (S1-S8, L1-L8, C1-C8) and the final check
+  scoring.py     live scoring (augmented IRT ability, augmented BKT mastery, Random Forest) and calibration
+  views.py       participant flow
+  admin.py       researcher dashboard, CSV export, calibration
+  templates/     HTML pages (mobile-first)
+engine/          evaluation engine: augmented IRT, augmented BKT, Random Forest + SHAP, statistics (H1-H5)
+scripts/
+  run_evaluation.py   runs H1-H5, the ablation study and the baselines on the exported CSVs
+  simulate_users.py   dry run: simulated participants go through the whole website
+data/prior_knowledge.json   the 10 warm-up items
+tests/           app and engine tests (pytest)
+```
+
+## Run it on your computer
+
+```bash
+python -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+python wsgi.py                     # open http://127.0.0.1:5000
+```
+
+The researcher dashboard is at `/admin`. The default password is `admin`, so set `ADMIN_PASSWORD` before
+going online.
+
+Run the tests with `pip install pytest` and then `pytest -q`.
+
+## Put it online (Render, free tier)
+
+1. Push this repository to GitHub.
+2. On https://render.com, choose **New → Blueprint** and select the repository. `render.yaml` sets up the
+   web service.
+3. Set the environment variables:
+   - `ADMIN_PASSWORD`: your own password for `/admin`.
+   - `DATABASE_URL`: a PostgreSQL URL (for example a free Neon or Supabase database). Without it, the app
+     uses SQLite, which **Render deletes on every restart**, so always set this before collecting real
+     data.
+   - `SECRET_KEY`: generated automatically.
+4. Open the URL Render gives you on a phone. Share it, or a QR code of it, with participants.
+
+The free Render tier sleeps after 15 minutes without visitors; the first visit after that takes about a
+minute to load. Open the site a few minutes before a class session.
+
+## During the study
+
+| When | What to do in `/admin` |
+|---|---|
+| After the pilot (5–10 users) | Check the item table: templates that almost everyone or almost no one answers correctly may need rewording. Then delete the pilot data (use a fresh database). |
+| After 30 or more users | Press **Calibrate**. The augmented IRT, BKT and Random Forest are fitted on the real answers, and new users are scored with them. |
+| At the end | Download `responses.csv` and `users.csv`, then run the evaluation below. |
+
+```bash
+python scripts/run_evaluation.py --responses responses.csv --users users.csv
+```
+
+This writes `results/evaluation_report.md` (H1–H5), `table16_ablation.csv` and `table18_baselines.csv`
+for Chapter 4.
+
+## Notes for the thesis
+
+- **Prediction model:** a Random Forest trained on a synthetic academic-performance dataset generated with a
+  documented rule (`make_dataset` in `app/predictor.py`). It can be swapped for a real dataset without
+  changing anything else.
+- **Counterfactuals:** found by searching the smallest change to the actionable factors (up to three) that
+  flips the prediction, DiCE-style. The previous grade is kept fixed. For fewer than 2% of extreme inputs no
+  realistic change flips the prediction; the app then asks the user for a different scenario.
+- **Data:** stored under codes (U0001, …), never names, in line with the Data Privacy Act of 2012.

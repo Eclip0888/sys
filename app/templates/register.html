@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card narrow">
+  <h1>Create an account</h1>
+  <p class="muted">Use a username that does not show your real name. You will need it to continue later.</p>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Username<input name="username" autocomplete="username" required minlength="3" maxlength="30"></label>
+    <label>Password<input type="password" name="password" autocomplete="new-password" required minlength="6"></label>
+    <label>Repeat password<input type="password" name="password2" autocomplete="new-password" required minlength="6"></label>
+    <button class="btn wide">Create account</button>
+  </form>
+  <p class="muted small">Already registered? <a href="{{ url_for('study.login') }}">Log in</a></p>
+</section>
+{% endblock %}

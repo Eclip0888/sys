@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <h1>Do you really understand what the AI tells you?</h1>
+  <p>Ask an AI assistant whether a student will pass, read its explanation, and answer a few quick questions about it. It takes about 40 minutes.</p>
+  <div class="row">
+    <a class="btn" href="{{ url_for('study.register') }}">Start</a>
+    <a class="btn ghost" href="{{ url_for('study.login') }}">I already have an account</a>
+  </div>
+</section>
+<section class="card">
+  <h2>What you will do</h2>
+  <ol class="steps">
+    <li>Agree to take part and fill in a short profile.</li>
+    <li>Answer 10 quick questions about AI (a warm-up, not graded).</li>
+    <li>Ask the AI 12 questions. After each answer, it asks you two questions about its explanation.</li>
+    <li>Finish with a short final check and see your results.</li>
+  </ol>
+</section>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card">
+  <h1>Thank you for taking part!</h1>
+  <p>Your final check score: <b>{{ '%.0f'|format((u.post_score or 0)*100) }}%</b> — {{ 'Proficient' if proficient else 'Needs improvement' }} in reading AI explanations.</p>
+  {% if rf is not none %}<p>The evaluation model estimates a <b>{{ '%.0f'|format(rf*100) }}%</b> chance that you understand AI explanations at a proficient level.</p>{% endif %}
+  <p class="muted small">Your ability estimate is higher than about {{ '%.0f'|format(percentile) }}% of a typical group.</p>
+</section>
+<section class="card">
+  <h2>By explanation type</h2>
+  <table class="tbl">
+    <tr><th>Explanation</th><th>Correct</th><th>Mastery</th></tr>
+    {% for k, (c, n) in by_type.items() %}
+    <tr><td>{{ k }}</td><td>{{ c }} / {{ n }}</td><td><div class="bar-track"><div class="bar pos" style="width: {{ '%.0f'|format(mastery[k]) }}%"></div></div> {{ '%.0f'|format(mastery[k]) }}%</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted small">Mastery is the estimated probability that you have learned to read each type of explanation, updated after every answer.</p>
+</section>
+<section class="card"><p>You may now close this page. Please do not share the questions with other participants.</p></section>
+{% endblock %}
