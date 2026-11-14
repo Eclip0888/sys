@@ -113,9 +113,10 @@ class BKT:
 
     def fit(self, df: pd.DataFrame):
         """df columns: user_id, skill, order, correct, trust (1-5) or trust_level."""
-        self.params, self.n_eff = {}, {}
+        self.params, self.n_eff, self._data = {}, {}, {}
         for skill in sorted(df["skill"].unique()):
             obs, lv, mask = self._pad(_sequences(df, skill))
+            self._data[skill] = (obs, lv, mask)
             p = SkillParams(0.3, np.full(3, 0.1), 0.2, 0.1, 0.05 if self.forgetting else 0.0)
             prev = -np.inf
             for _ in range(self.max_iter):
@@ -137,10 +138,47 @@ class BKT:
             self.n_eff[skill] = Td if self.augmented else np.full(3, Td.sum())
         return self
 
-    def t_standard_errors(self, skill):
-        """Approximate SE of each learning rate (binomial, using the expected exposures)."""
-        p, n = self.params[skill], self.n_eff[skill]
-        return np.sqrt(p.T * (1 - p.T) / np.maximum(n, 1e-9))
+    def t_standard_errors(self, skill, method="hessian"):
+        """Standard error of each learning rate.
+
+        method="hessian" (default): Wald SE from the observed information, i.e. the numerical
+        Hessian of the marginal log-likelihood over all free parameters of the skill (L0, the
+        learning rates, G, S).  It accounts for the uncertainty in the hidden knowledge state.
+        method="binomial": quick approximation sqrt(T(1-T)/n) using the expected exposures; it
+        ignores that uncertainty and is therefore too small (optimistic).
+        """
+        p = self.params[skill]
+        if method == "binomial":
+            n = self.n_eff[skill]
+            return np.sqrt(p.T * (1 - p.T) / np.maximum(n, 1e-9))
+        obs, lv, mask = self._data[skill]
+        k_t = 3 if self.augmented else 1
+
+        def ll(v):
+            T = v[1:1 + k_t] if self.augmented else np.full(3, v[1])
+            q = SkillParams(v[0], np.asarray(T), v[1 + k_t], v[2 + k_t], p.F)
+            return self._em_step(obs, lv, mask, q)[1]
+
+        v0 = np.concatenate([[p.L0], p.T if self.augmented else p.T[:1], [p.G, p.S]])
+        k = len(v0)
+        h = np.maximum(1e-4, 1e-3 * np.abs(v0))
+        H = np.zeros((k, k))
+        f0 = ll(v0)
+        for i in range(k):
+            for j in range(i, k):
+                ei = np.zeros(k); ei[i] = h[i]
+                ej = np.zeros(k); ej[j] = h[j]
+                if i == j:
+                    H[i, i] = (ll(v0 + ei) - 2 * f0 + ll(v0 - ei)) / h[i] ** 2
+                else:
+                    H[i, j] = H[j, i] = (ll(v0 + ei + ej) - ll(v0 + ei - ej) - ll(v0 - ei + ej)
+                                         + ll(v0 - ei - ej)) / (4 * h[i] * h[j])
+        try:
+            cov = np.linalg.inv(-H)
+            se = np.sqrt(np.clip(np.diag(cov)[1:1 + k_t], 0, None))
+        except np.linalg.LinAlgError:
+            return self.t_standard_errors(skill, method="binomial")
+        return se if self.augmented else np.full(3, se[0])
 
     # ------------------------------------------------------------------ prediction
     def predict_sequence(self, obs, lv, skill):

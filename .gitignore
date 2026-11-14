@@ -8,3 +8,5 @@ venv/
 *.db
 .pytest_cache/
 results/
+
+data/assistments_*.csv
