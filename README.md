@@ -60,21 +60,38 @@ going online.
 
 Run the tests with `pip install pytest` and then `pytest -q`.
 
-## Put it online (Render, free tier)
+## Put it online (Render + Neon, free tier)
 
-1. Push this repository to GitHub.
-2. On https://render.com, choose **New → Blueprint** and select the repository. `render.yaml` sets up the
-   web service.
-3. Set the environment variables:
-   - `ADMIN_PASSWORD`: your own password for `/admin`.
-   - `DATABASE_URL`: a PostgreSQL URL (for example a free Neon or Supabase database). Without it, the app
-     uses SQLite, which **Render deletes on every restart**, so always set this before collecting real
-     data.
-   - `SECRET_KEY`: generated automatically.
-4. Open the URL Render gives you on a phone. Share it, or a QR code of it, with participants.
+**1. Create the database (Neon).**
+Sign in at https://neon.tech with GitHub → **Create project** (region: *AWS Asia Pacific (Singapore)*,
+the closest to the Philippines) → on the dashboard press **Connect** and copy the connection string. It
+looks like `postgresql://user:password@ep-xxxx.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`.
+Keep it private: anyone with it can read the data.
 
-The free Render tier sleeps after 15 minutes without visitors; the first visit after that takes about a
-minute to load. Open the site a few minutes before a class session.
+**2. Create the web service (Render).**
+Sign in at https://render.com with GitHub → **New → Blueprint** → select this repository. `render.yaml`
+fills in the build and start commands. When asked for the environment variables, enter:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | the Neon connection string from step 1 |
+| `ADMIN_PASSWORD` | your own strong password for `/admin` (not `admin`) |
+| `SECRET_KEY` | generated automatically |
+
+The first build takes about 5–10 minutes.
+
+**3. Check it.**
+Open the `.onrender.com` URL on a phone and do one full sitting with a test account. Then open
+`/admin`, log in, and confirm the test user appears. In Neon's **Tables** view you should see the same
+user, which proves the data is stored in PostgreSQL and not in Render's temporary disk.
+Exclude or delete the test user before real data collection.
+
+**Notes.**
+- Without `DATABASE_URL` the app falls back to SQLite, which **Render deletes on every restart**. Never
+  collect real data that way.
+- The free Render tier sleeps after 15 minutes without visitors; the first visit after that takes about a
+  minute. Open the site a few minutes before each class session.
+- `postgres://` and `postgresql://` URLs both work; the app selects the installed psycopg2 driver.
 
 ## During the study
 

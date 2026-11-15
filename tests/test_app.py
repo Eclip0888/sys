@@ -86,3 +86,11 @@ def test_cannot_skip_ahead(client):
     client.post("/register", data={"username": "skipper", "password": "secret1", "password2": "secret1"})
     r = client.get("/chat")
     assert r.status_code == 302 and r.location.endswith("/consent")
+
+
+def test_database_url_uses_installed_postgres_driver():
+    from app import database_url
+    assert database_url("postgres://u:p@host/db") == "postgresql+psycopg2://u:p@host/db"
+    assert database_url("postgresql://u:p@host/db?sslmode=require") == "postgresql+psycopg2://u:p@host/db?sslmode=require"
+    assert database_url("postgresql+psycopg2://u@h/d") == "postgresql+psycopg2://u@h/d"
+    assert database_url("sqlite:///x.db") == "sqlite:///x.db"
