@@ -37,8 +37,11 @@ app/
   templates/     HTML pages (mobile-first)
 engine/          evaluation engine: augmented IRT, augmented BKT, Random Forest + SHAP, statistics (H1-H5)
 scripts/
-  run_evaluation.py   runs H1-H5, the ablation study and the baselines on the exported CSVs
-  simulate_users.py   dry run: simulated participants go through the whole website
+  run_evaluation.py       runs H1-H5, the ablation study and the baselines on the exported CSVs
+  parameter_recovery.py   recovery of λ and P(T | τ) on 50 synthetic datasets (Table 15)
+  performance_tests.py    time, memory, live scoring, robustness and scalability (Table 3)
+  assistments_benchmark.py  standard IRT and BKT on the ASSISTments 2009-2010 dataset
+  simulate_users.py       dry run: simulated participants go through the whole website
 data/prior_knowledge.json   the 10 warm-up items
 tests/           app and engine tests (pytest)
 ```
@@ -87,6 +90,26 @@ python scripts/run_evaluation.py --responses responses.csv --users users.csv
 
 This writes `results/evaluation_report.md` (H1–H5), `table16_ablation.csv` and `table18_baselines.csv`
 for Chapter 4.
+
+### Algorithm evaluation that does not need participants
+
+These can be run now, before data collection:
+
+```bash
+python scripts/parameter_recovery.py      # Table 15: 50 synthetic datasets, bias / RMSE / 95% CI coverage
+python scripts/performance_tests.py       # Table 3: time, memory, live scoring, robustness, scalability
+python scripts/assistments_benchmark.py --data data/assistments_2009.csv   # ASSISTments benchmark
+```
+
+The ASSISTments 2009–2010 skill-builder file (about 80 MB) is not stored in the repository. Download it with
+
+```bash
+curl -L -o data/assistments_2009.csv https://raw.githubusercontent.com/CAHLR/pyBKT-examples/master/data/as.csv
+```
+
+After data collection, run the performance tests on the real export as well:
+`python scripts/performance_tests.py --responses responses.csv --users users.csv`. Runtimes depend on the
+computer, so report the machine used (the script prints it).
 
 ## Notes for the thesis
 
