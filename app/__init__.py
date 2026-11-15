@@ -17,12 +17,24 @@ def get_predictor():
     return _predictor
 
 
+def database_url(url: str) -> str:
+    """Make a PostgreSQL URL from Neon, Supabase or Render use the installed psycopg2 driver.
+
+    Providers give "postgres://..." or "postgresql://...".  SQLAlchemy 2.1 maps a plain
+    "postgresql://" to the psycopg (v3) driver, which is not installed, so the driver is
+    named explicitly.
+    """
+    url = url.strip()
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
+    return url
+
+
 def create_app(test_config=None):
     app = Flask(__name__, instance_relative_config=True)
     os.makedirs(app.instance_path, exist_ok=True)
-    url = os.environ.get("DATABASE_URL", "sqlite:///" + os.path.join(app.instance_path, "xai_check.db"))
-    if url.startswith("postgres://"):
-        url = url.replace("postgres://", "postgresql://", 1)
+    url = database_url(os.environ.get("DATABASE_URL", "sqlite:///" + os.path.join(app.instance_path, "xai_check.db")))
     app.config.update(
         SECRET_KEY=os.environ.get("SECRET_KEY", "dev-only-change-me"),
         SQLALCHEMY_DATABASE_URI=url,
