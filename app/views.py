@@ -139,13 +139,9 @@ def consent(u):
 
 
 PROFILE_CHOICES = {
-    "age": ["18–19", "20–21", "22 and above"],
-    "sex": ["Female", "Male", "Prefer not to say"],
-    "program": ["BS Computer Science", "BS Information Technology", "Other computing program"],
     "year_level": ["1", "2", "3", "4"],
     "prog_courses": ["1", "2", "3", "4"],
     "ai_courses": ["0", "1", "2", "3"],
-    "ai_use": ["Never", "A few times a month", "Weekly", "Daily"],
 }
 
 
@@ -157,7 +153,6 @@ def profile(u):
         if any(f.get(k) not in v for k, v in PROFILE_CHOICES.items()):
             flash("Please answer every question.")
         else:
-            u.age, u.sex, u.program, u.ai_use = f["age"], f["sex"], f["program"], f["ai_use"]
             u.year_level, u.prog_courses, u.ai_courses = int(f["year_level"]), int(f["prog_courses"]), int(f["ai_courses"])
             u.stage = "prior"
             db.session.commit()

@@ -124,7 +124,7 @@ def users_frame(users, post_override=None) -> pd.DataFrame:
         "user_id": u.code, "prior_knowledge": u.prior_score or 0, "year_level": u.year_level or 0,
         "ai_courses": u.ai_courses or 0,
         "post_score": (post_override or {}).get(u.id, u.post_score if u.post_score is not None else np.nan),
-        "age": u.age, "sex": u.sex, "program": u.program, "prog_courses": u.prog_courses, "ai_use": u.ai_use,
+        "prog_courses": u.prog_courses,
         "completed": u.stage == "done", "excluded": bool(u.excluded),
         "started_at": u.created_at, "finished_at": u.finished_at} for u in users])
 

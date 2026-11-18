@@ -23,8 +23,7 @@ def walk_sitting(c, name="tester", pick=0):
     r = c.post("/register", data={"username": name, "password": "secret1", "password2": "secret1"})
     assert r.status_code == 302 and r.location.endswith("/consent")
     c.post("/consent", data={"agree": "yes"})
-    c.post("/profile", data={"age": "20–21", "sex": "Female", "program": "BS Computer Science", "year_level": "3",
-                             "prog_courses": "3", "ai_courses": "1", "ai_use": "Weekly"})
+    c.post("/profile", data={"year_level": "3", "prog_courses": "3", "ai_courses": "1"})
     from app.views import prior_items
     c.post("/prior", data={it["item_id"]: it["answer"] for it in prior_items()})
     c.post("/tutorial", data={})

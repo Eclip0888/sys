@@ -27,10 +27,8 @@ def sitting(c, app, k, rng):
     p_ok = lambda: 1 / (1 + 2.718 ** -(0.3 + 1.1 * skill))
     c.post("/register", data={"username": f"sim{k:03d}", "password": "secret1", "password2": "secret1"})
     c.post("/consent", data={"agree": "yes"})
-    c.post("/profile", data={"age": rng.choice(["18–19", "20–21", "22 and above"]), "sex": rng.choice(["Female", "Male"]),
-                             "program": rng.choice(["BS Computer Science", "BS Information Technology"]),
-                             "year_level": str(rng.randint(2, 4)), "prog_courses": str(rng.randint(1, 4)),
-                             "ai_courses": str(rng.randint(0, 3)), "ai_use": rng.choice(["Weekly", "Daily"])})
+    c.post("/profile", data={"year_level": str(rng.randint(2, 4)), "prog_courses": str(rng.randint(1, 4)),
+                             "ai_courses": str(rng.randint(0, 3))})
     c.post("/prior", data={it["item_id"]: (it["answer"] if rng.random() < p_ok() else "A") for it in prior_items()})
     c.post("/tutorial", data={})
 
