@@ -92,6 +92,16 @@ Exclude or delete the test user before real data collection.
 - The free Render tier sleeps after 15 minutes without visitors; the first visit after that takes about a
   minute. Open the site a few minutes before each class session.
 - `postgres://` and `postgresql://` URLs both work; the app selects the installed psycopg2 driver.
+- The profile asks only for year level, programming courses and AI courses (age, sex, program and AI-tool
+  use were removed because no analysis uses them; the consent screen confirms users are 18 or older).
+  A database created by an older version still has those four columns. The app ignores them, so nothing
+  has to be changed. To remove them anyway, run this once in Neon's **SQL Editor** (this deletes any values
+  already stored in them):
+
+  ```sql
+  ALTER TABLE "user" DROP COLUMN IF EXISTS age, DROP COLUMN IF EXISTS sex,
+    DROP COLUMN IF EXISTS program, DROP COLUMN IF EXISTS ai_use;
+  ```
 
 ## During the study
 

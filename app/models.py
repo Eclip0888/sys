@@ -16,14 +16,12 @@ class User(db.Model):
     pw_hash = db.Column(db.String(256), nullable=False)
     created_at = db.Column(db.DateTime, default=now)
     consent_at = db.Column(db.DateTime)
-    # profile (Table 2)
-    age = db.Column(db.String(20))
-    sex = db.Column(db.String(30))
-    program = db.Column(db.String(60))
+    # profile (Table 2): only what the analysis uses. year_level and ai_courses are Random Forest
+    # features; prog_courses checks the inclusion criterion (at least one programming course).
+    # Age is not stored: the consent screen asks users to confirm they are 18 or older.
     year_level = db.Column(db.Integer)
     prog_courses = db.Column(db.Integer)
     ai_courses = db.Column(db.Integer)
-    ai_use = db.Column(db.String(30))
     # progress
     stage = db.Column(db.String(20), default="consent")   # consent, profile, prior, tutorial, chat, final, done
     round = db.Column(db.Integer, default=0)                 # completed rounds (0-12)
