@@ -65,7 +65,7 @@ Run the tests with `pytest -q`.
 1. On https://neon.tech create a free PostgreSQL database and copy its connection string.
 2. On https://render.com choose **New → Blueprint** and select this repository (`render.yaml`).
 3. Set the environment variables: `GEMINI_API_KEY` (from https://aistudio.google.com), `ADMIN_PASSWORD`,
-   `DATABASE_URL` (the Neon string). `GEMINI_MODEL` defaults to `gemini-2.5-flash`.
+   `DATABASE_URL` (the Neon string). `GEMINI_MODEL` defaults to `gemini-3.8-flash`; if Google retires it, set it to a current model from https://ai.google.dev/gemini-api/docs/models.
 4. Open the Render link on a phone. The free plan sleeps after 15 minutes without visitors; the first visit
    afterwards takes about a minute.
 

@@ -1,7 +1,7 @@
 """Google Gemini calls: the AI answer, the generated question and the self-consistency check.
 
 GEMINI_API_KEY   your key from Google AI Studio (never commit it)
-GEMINI_MODEL     model name, default "gemini-2.5-flash"
+GEMINI_MODEL     model name, default "gemini-3.8-flash" (see ai.google.dev/gemini-api/docs/models)
 GEMINI_RPM       maximum requests per minute (default 8) so the free tier is not exceeded
 
 Without a key the app uses FakeGemini, an offline stand-in with fixed answers, so the website,
@@ -46,6 +46,9 @@ OPTIONS:
 {options}"""
 
 
+DEFAULT_MODEL = "gemini-3.8-flash"
+
+
 class QuestionOut(BaseModel):
     question: str
     options: list[str]
@@ -82,13 +85,18 @@ class GeminiClient:
         from google import genai
         self.genai = genai
         self.client = genai.Client(api_key=api_key)
-        self.model = model or os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.model = (model or os.environ.get("GEMINI_MODEL", "") or DEFAULT_MODEL).strip()
+        self.use_thinking_config = True
         self.limiter = _RateLimiter(rpm or int(os.environ.get("GEMINI_RPM", "8")))
 
     def _config(self, **kw):
+        """Keep answers fast: little or no internal "thinking" (Gemini 2.5 uses a budget, Gemini 3+ a level)."""
         from google.genai import types
-        if "flash" in self.model:
-            kw.setdefault("thinking_config", types.ThinkingConfig(thinking_budget=0))
+        if self.use_thinking_config:
+            if self.model.startswith("gemini-2.5") and "flash" in self.model:
+                kw.setdefault("thinking_config", types.ThinkingConfig(thinking_budget=0))
+            elif not self.model.startswith(("gemini-2.", "gemini-1.")):
+                kw.setdefault("thinking_config", types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW))
         return types.GenerateContentConfig(**kw)
 
     def _call(self, contents, config, retries=4):
@@ -100,6 +108,14 @@ class GeminiClient:
                 return self.client.models.generate_content(model=self.model, contents=contents, config=config)
             except errors.APIError as e:
                 code = getattr(e, "code", None)
+                msg = str(getattr(e, "message", e))
+                if code == 400 and "thinking" in msg.lower() and getattr(config, "thinking_config", None):
+                    self.use_thinking_config = False            # this model rejects the setting: drop it
+                    config.thinking_config = None
+                    continue
+                if code == 404:
+                    raise GeminiError(f"the model '{self.model}' is not available ({msg}). Set GEMINI_MODEL to a "
+                                      f"current model, for example {DEFAULT_MODEL}") from e
                 if code in (429, 500, 503) and attempt < retries:
                     time.sleep(delay)
                     delay *= 2
