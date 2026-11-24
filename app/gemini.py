@@ -6,6 +6,9 @@ GEMINI_RPM       maximum requests per minute (default 8) so the free tier is not
 GEMINI_FALLBACK_MODELS  comma-separated models to try when the main model is busy (503) or out of quota (429),
                  default "gemini-3.7-flash,gemini-3.5-flash-lite"
 
+GROQ_API_KEY     optional backup provider (console.groq.com): used when every Gemini model is busy or out of quota
+GROQ_MODELS      comma-separated Groq models to try, default "openai/gpt-oss-120b,llama-3.3-70b-versatile"
+
 Without a key the app uses FakeGemini, an offline stand-in with fixed answers, so the website,
 the tests and the simulation can run before the key is set.
 """
@@ -166,6 +169,95 @@ class GeminiClient:
         return r.text or ""
 
 
+GROQ_URL = "https://api.groq.com/openai/v1"
+DEFAULT_GROQ_MODELS = "openai/gpt-oss-120b,llama-3.3-70b-versatile"
+JSON_QUESTION = ("\n\nRespond with ONLY a JSON object with these keys: question (string), options (array of exactly 4 "
+                 "strings), answer_index (integer 0-3), level (integer 1-3).")
+JSON_CHECK = '\n\nRespond with ONLY a JSON object of the form {"answer_index": <integer 0-3>}.'
+
+
+class OpenAICompatClient:
+    """Backup provider with an OpenAI-compatible chat API (Groq by default; works with OpenRouter too)."""
+    fake = False
+
+    def __init__(self, api_key: str, models: list[str], base_url: str = GROQ_URL, name: str = "groq", http=None):
+        import httpx
+        self.name, self.models, self.base_url = name, models, base_url.rstrip("/")
+        self.http = http or httpx.Client(timeout=90.0, headers={"Authorization": f"Bearer {api_key}"})
+        self.model = models[0]
+        self.last_model = f"{name}/{self.model}"
+        self.limiter = _RateLimiter(int(os.environ.get("GROQ_RPM", "20")))
+
+    def _chat(self, messages, json_mode=False, temperature=0.7):
+        last = None
+        for model in self.models:
+            body = {"model": model, "messages": messages, "temperature": temperature}
+            if json_mode:
+                body["response_format"] = {"type": "json_object"}
+            for attempt in range(2):
+                self.limiter.wait()
+                try:
+                    r = self.http.post(f"{self.base_url}/chat/completions", json=body)
+                except Exception as e:                    # network error: try again, then the next model
+                    last = f"{model}: {e}"
+                    continue
+                if r.status_code == 200:
+                    text = (r.json()["choices"][0]["message"].get("content") or "").strip()
+                    if text:
+                        self.last_model = f"{self.name}/{model}"
+                        return text
+                    last = f"{model}: empty answer"
+                    break
+                last = f"{model}: error {r.status_code}: {r.text[:200]}"
+                if r.status_code in (500, 502, 503) and attempt == 0:
+                    time.sleep(2)
+                    continue
+                break                                     # 400/404 (model gone), 429 (quota): next model
+        raise GeminiError(f"backup provider {self.name} could not answer (last: {last})")
+
+    def answer(self, prompt: str) -> str:
+        return self._chat([{"role": "system", "content": ANSWER_SYSTEM}, {"role": "user", "content": prompt}])
+
+    def question(self, prompt: str, answer: str) -> str:
+        content = QUESTION_PROMPT.format(prompt=prompt, answer=answer) + JSON_QUESTION
+        return self._chat([{"role": "user", "content": content}], json_mode=True, temperature=0.9)
+
+    def check(self, answer: str, question: str, options: list[str]) -> str:
+        opts = "\n".join(f"{i}. {o}" for i, o in enumerate(options))
+        content = CHECK_PROMPT.format(answer=answer, question=question, options=opts) + JSON_CHECK
+        return self._chat([{"role": "user", "content": content}], json_mode=True, temperature=0.0)
+
+
+class ChainClient:
+    """Gemini first; when every Gemini model fails, the backup provider answers."""
+    fake = False
+
+    def __init__(self, providers):
+        self.providers = providers
+        self.model = providers[0].model + "".join(f" → {getattr(p, 'name', 'backup')} backup" for p in providers[1:])
+        self.last_model = providers[0].model
+
+    def _try(self, method, *args):
+        errors = []
+        for p in self.providers:
+            try:
+                out = getattr(p, method)(*args)
+                self.last_model = getattr(p, "last_model", p.model)
+                return out
+            except GeminiError as e:
+                errors.append(str(e))
+        raise GeminiError(" | ".join(errors))
+
+    def answer(self, prompt):
+        return self._try("answer", prompt)
+
+    def question(self, prompt, answer):
+        return self._try("question", prompt, answer)
+
+    def check(self, answer, question, options):
+        return self._try("check", answer, question, options)
+
+
 class FakeGemini:
     """Offline stand-in used for tests and for running the site before a key is set."""
     fake = True
@@ -198,8 +290,20 @@ def get_client():
     """Real Gemini if GEMINI_API_KEY is set, otherwise the offline FakeGemini."""
     global _client
     if _client is None:
+        providers = []
         key = os.environ.get("GEMINI_API_KEY", "").strip()
-        _client = GeminiClient(key) if key else FakeGemini()
+        if key:
+            providers.append(GeminiClient(key))
+        gkey = os.environ.get("GROQ_API_KEY", "").strip()
+        if gkey:
+            models = [m.strip() for m in os.environ.get("GROQ_MODELS", DEFAULT_GROQ_MODELS).split(",") if m.strip()]
+            providers.append(OpenAICompatClient(gkey, models))
+        if not providers:
+            _client = FakeGemini()
+        elif len(providers) == 1:
+            _client = providers[0]
+        else:
+            _client = ChainClient(providers)
     return _client
 
 
