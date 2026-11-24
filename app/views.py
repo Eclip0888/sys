@@ -138,6 +138,7 @@ def ask(u):
         flash(f"The AI could not answer right now ({e}). Please try again in a minute.")
         return redirect(url_for("chat.chat"))
     feats = answer_features(it.answer)
+    feats["model"] = getattr(client, "last_model", "?")
     try:
         qr = generate_question(client, prompt, it.answer)
     except GeminiError as e:

@@ -69,6 +69,10 @@ Run the tests with `pytest -q`.
 4. Open the Render link on a phone. The free plan sleeps after 15 minutes without visitors; the first visit
    afterwards takes about a minute.
 
+If the main model is busy (503) or out of quota (429), the app automatically tries the models in
+`GEMINI_FALLBACK_MODELS` (default `gemini-3.7-flash,gemini-3.5-flash-lite`). The model that wrote each answer is
+saved with it (`model` column in the exports).
+
 **Never put the API key in the code or in GitHub.** Only in Render's environment settings or your own terminal.
 
 ## Thesis workflow

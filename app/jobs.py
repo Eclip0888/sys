@@ -60,6 +60,7 @@ def process_prompt(client, batch: str, item: dict) -> PromptRun:
         pr.answer = client.answer(item["prompt"])
         pr.answer_seconds = round(time.monotonic() - t0, 2)
         feats = answer_features(pr.answer)
+        feats["model"] = getattr(client, "last_model", "?")
         q = generate_question(client, item["prompt"], pr.answer)
         pr.attempts, pr.valid_outputs, pr.first_try, pr.question_seconds = q.attempts, q.valid_outputs, q.first_try, q.seconds
         pr.question_ok = q.ok

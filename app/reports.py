@@ -48,7 +48,8 @@ def table3(runs) -> dict:
 
 def runs_frame(runs) -> pd.DataFrame:
     return pd.DataFrame([{
-        "no": r.number, "domain": r.domain, "target_difficulty": r.target, "prompt": r.prompt, "answer": r.answer,
+        "no": r.number, "domain": r.domain, "target_difficulty": r.target, "model": (r.features or {}).get("model"),
+        "prompt": r.prompt, "answer": r.answer,
         "fkgl": (r.features or {}).get("fkgl"), "words": (r.features or {}).get("words"),
         "tech": (r.features or {}).get("tech"), "level": r.level, "question_ok": r.question_ok,
         "question": r.question, "option_a": (r.options or [None] * 4)[0], "option_b": (r.options or [None] * 4)[1],

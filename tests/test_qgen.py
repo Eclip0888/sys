@@ -63,3 +63,56 @@ def test_thinking_config_per_model():
     c3.use_thinking_config = False
     assert c3._config().thinking_config is None
     assert GeminiClient("dummy-key", model="").model == DEFAULT_MODEL
+
+
+class _Resp:
+    text = "an answer"
+
+
+def _client_with(errors_by_model):
+    """GeminiClient whose fake transport raises the given HTTP codes per model, then succeeds."""
+    from google.genai import errors
+
+    from app.gemini import GeminiClient
+    c = GeminiClient("dummy-key", model="main-model")
+    c.models = ["main-model", "backup-model"]
+    c.limiter.interval = 0
+    calls = []
+
+    class Models:
+        def generate_content(self, model, contents, config):
+            calls.append(model)
+            codes = errors_by_model.get(model, [])
+            if codes:
+                code = codes.pop(0)
+                raise errors.APIError(code, {"error": {"code": code, "message": "busy", "status": "X"}})
+            return _Resp()
+
+    c.client = type("C", (), {"models": Models()})()
+    return c, calls
+
+
+def test_busy_model_falls_back(monkeypatch):
+    import time as _t
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    c, calls = _client_with({"main-model": [503, 503]})
+    assert c.answer("hi") == "an answer"
+    assert calls == ["main-model", "main-model", "backup-model"] and c.last_model == "backup-model"
+
+
+def test_quota_moves_to_next_model_immediately():
+    c, calls = _client_with({"main-model": [429]})
+    c.answer("hi")
+    assert calls == ["main-model", "backup-model"]
+
+
+def test_all_models_busy_gives_clear_error(monkeypatch):
+    import time as _t
+
+    import pytest as _p
+
+    from app.gemini import GeminiError
+    monkeypatch.setattr(_t, "sleep", lambda s: None)
+    c, _ = _client_with({"main-model": [503, 503], "backup-model": [503, 503]})
+    with _p.raises(GeminiError, match="busy or unavailable"):
+        c.answer("hi")
