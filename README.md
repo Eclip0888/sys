@@ -73,6 +73,10 @@ If the main model is busy (503) or out of quota (429), the app automatically tri
 `GEMINI_FALLBACK_MODELS` (default `gemini-3.7-flash,gemini-3.5-flash-lite`). The model that wrote each answer is
 saved with it (`model` column in the exports).
 
+**Backup provider (optional but recommended):** add `GROQ_API_KEY` (free key from https://console.groq.com).
+When every Gemini model fails, the app asks Groq instead (`GROQ_MODELS`, default
+`openai/gpt-oss-120b,llama-3.3-70b-versatile`; retired models are skipped automatically).
+
 **Never put the API key in the code or in GitHub.** Only in Render's environment settings or your own terminal.
 
 ## Thesis workflow

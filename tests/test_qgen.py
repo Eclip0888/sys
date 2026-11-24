@@ -116,3 +116,69 @@ def test_all_models_busy_gives_clear_error(monkeypatch):
     c, _ = _client_with({"main-model": [503, 503], "backup-model": [503, 503]})
     with _p.raises(GeminiError, match="busy or unavailable"):
         c.answer("hi")
+
+
+def _groq(responses):
+    """OpenAICompatClient with a fake HTTP transport: responses is a list of (status, json) per request."""
+    import httpx
+
+    from app.gemini import OpenAICompatClient
+    seen = []
+
+    def handler(request):
+        import json as _j
+        seen.append(_j.loads(request.content)["model"])
+        status, body = responses.pop(0)
+        return httpx.Response(status, json=body)
+
+    c = OpenAICompatClient("k", ["model-a", "model-b"], http=httpx.Client(transport=httpx.MockTransport(handler)))
+    c.limiter.interval = 0
+    return c, seen
+
+
+def _ok(text):
+    return (200, {"choices": [{"message": {"content": text}}]})
+
+
+def test_groq_answers_and_skips_retired_model():
+    c, seen = _groq([(404, {"error": "model not found"}), _ok("hello")])
+    assert c.answer("hi") == "hello" and seen == ["model-a", "model-b"] and c.last_model == "groq/model-b"
+
+
+def test_groq_question_json_passes_validation():
+    from app.qgen import parse_question
+    c, _ = _groq([_ok(q())])
+    assert parse_question(c.question("p", "a"))[2] == 1
+
+
+def test_chain_uses_backup_when_gemini_fails():
+    from app.gemini import ChainClient, GeminiError
+
+    class Down:
+        model = "gemini-x"
+
+        def answer(self, prompt):
+            raise GeminiError("busy")
+
+    backup, _ = _groq([_ok("from groq")])
+    chain = ChainClient([Down(), backup])
+    assert chain.answer("hi") == "from groq" and chain.last_model == "groq/model-a"
+    assert "groq backup" in chain.model
+
+
+def test_qgen_through_chain_with_backup():
+    from app.gemini import ChainClient, GeminiError
+    from app.qgen import generate_question
+
+    class Down:
+        model = "gemini-x"
+
+        def question(self, *a):
+            raise GeminiError("busy")
+
+        def check(self, *a):
+            raise GeminiError("busy")
+
+    backup, _ = _groq([_ok(q()), _ok('{"answer_index": 1}')])
+    r = generate_question(ChainClient([Down(), backup]), "p", "a")
+    assert r.ok and r.key == 1
