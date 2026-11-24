@@ -3,6 +3,8 @@
 GEMINI_API_KEY   your key from Google AI Studio (never commit it)
 GEMINI_MODEL     model name, default "gemini-3.8-flash" (see ai.google.dev/gemini-api/docs/models)
 GEMINI_RPM       maximum requests per minute (default 8) so the free tier is not exceeded
+GEMINI_FALLBACK_MODELS  comma-separated models to try when the main model is busy (503) or out of quota (429),
+                 default "gemini-3.7-flash,gemini-3.5-flash-lite"
 
 Without a key the app uses FakeGemini, an offline stand-in with fixed answers, so the website,
 the tests and the simulation can run before the key is set.
@@ -47,6 +49,7 @@ OPTIONS:
 
 
 DEFAULT_MODEL = "gemini-3.8-flash"
+DEFAULT_FALLBACKS = "gemini-3.7-flash,gemini-3.5-flash-lite"
 
 
 class QuestionOut(BaseModel):
@@ -86,45 +89,66 @@ class GeminiClient:
         self.genai = genai
         self.client = genai.Client(api_key=api_key)
         self.model = (model or os.environ.get("GEMINI_MODEL", "") or DEFAULT_MODEL).strip()
-        self.use_thinking_config = True
+        fb = os.environ.get("GEMINI_FALLBACK_MODELS", DEFAULT_FALLBACKS)
+        self.models = [self.model] + [m.strip() for m in fb.split(",") if m.strip() and m.strip() != self.model]
+        self.no_thinking: set[str] = set()      # models that rejected the thinking setting
+        self.last_model = self.model
         self.limiter = _RateLimiter(rpm or int(os.environ.get("GEMINI_RPM", "8")))
 
-    def _config(self, **kw):
+    @property
+    def use_thinking_config(self):            # kept for compatibility with older tests
+        return self.model not in self.no_thinking
+
+    @use_thinking_config.setter
+    def use_thinking_config(self, value):
+        (self.no_thinking.discard if value else self.no_thinking.add)(self.model)
+
+    def _config(self, model: str | None = None, **kw):
         """Keep answers fast: little or no internal "thinking" (Gemini 2.5 uses a budget, Gemini 3+ a level)."""
         from google.genai import types
-        if self.use_thinking_config:
-            if self.model.startswith("gemini-2.5") and "flash" in self.model:
+        model = model or self.model
+        if model not in self.no_thinking:
+            if model.startswith("gemini-2.5") and "flash" in model:
                 kw.setdefault("thinking_config", types.ThinkingConfig(thinking_budget=0))
-            elif not self.model.startswith(("gemini-2.", "gemini-1.")):
+            elif not model.startswith(("gemini-2.", "gemini-1.")):
                 kw.setdefault("thinking_config", types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW))
         return types.GenerateContentConfig(**kw)
 
-    def _call(self, contents, config, retries=4):
+    def _call(self, contents, tries_per_model=2, **cfg):
+        """Try the main model, then the fallback models when one is busy (503/500), out of quota (429) or gone (404)."""
         from google.genai import errors
-        delay = 8.0
-        for attempt in range(retries + 1):
-            self.limiter.wait()
-            try:
-                return self.client.models.generate_content(model=self.model, contents=contents, config=config)
-            except errors.APIError as e:
-                code = getattr(e, "code", None)
-                msg = str(getattr(e, "message", e))
-                if code == 400 and "thinking" in msg.lower() and getattr(config, "thinking_config", None):
-                    self.use_thinking_config = False            # this model rejects the setting: drop it
-                    config.thinking_config = None
-                    continue
-                if code == 404:
-                    raise GeminiError(f"the model '{self.model}' is not available ({msg}). Set GEMINI_MODEL to a "
-                                      f"current model, for example {DEFAULT_MODEL}") from e
-                if code in (429, 500, 503) and attempt < retries:
-                    time.sleep(delay)
-                    delay *= 2
-                    continue
-                raise GeminiError(f"Gemini error {code}: {getattr(e, 'message', e)}") from e
-        raise GeminiError("Gemini did not respond")
+        last = None
+        for model in self.models:
+            delay = 2.0
+            attempt = 0
+            while attempt < tries_per_model:
+                self.limiter.wait()
+                try:
+                    r = self.client.models.generate_content(model=model, contents=contents,
+                                                            config=self._config(model, **cfg))
+                    self.last_model = model
+                    return r
+                except errors.APIError as e:
+                    code = getattr(e, "code", None)
+                    msg = str(getattr(e, "message", e))
+                    last = f"{model}: error {code}: {msg}"
+                    if code == 400 and "thinking" in msg.lower() and model not in self.no_thinking:
+                        self.no_thinking.add(model)              # this model rejects the setting: drop it
+                        continue
+                    if code in (500, 503):
+                        attempt += 1
+                        if attempt < tries_per_model:
+                            time.sleep(delay)
+                            delay *= 2
+                        continue
+                    if code in (404, 429):
+                        break                                     # next model
+                    raise GeminiError(f"Gemini error {code}: {msg}") from e
+        raise GeminiError(f"all models are busy or unavailable right now (last: {last}). Try again in a few minutes, "
+                          f"or set GEMINI_MODEL to another current model")
 
     def answer(self, prompt: str) -> str:
-        r = self._call(prompt, self._config(system_instruction=ANSWER_SYSTEM, temperature=0.7))
+        r = self._call(prompt, system_instruction=ANSWER_SYSTEM, temperature=0.7)
         text = (r.text or "").strip()
         if not text:
             raise GeminiError("Gemini returned an empty answer")
@@ -132,15 +156,13 @@ class GeminiClient:
 
     def question(self, prompt: str, answer: str) -> str:
         r = self._call(QUESTION_PROMPT.format(prompt=prompt, answer=answer),
-                       self._config(response_mime_type="application/json", response_schema=QuestionOut,
-                                    temperature=0.9))
+                       response_mime_type="application/json", response_schema=QuestionOut, temperature=0.9)
         return r.text or ""
 
     def check(self, answer: str, question: str, options: list[str]) -> str:
         opts = "\n".join(f"{i}. {o}" for i, o in enumerate(options))
         r = self._call(CHECK_PROMPT.format(answer=answer, question=question, options=opts),
-                       self._config(response_mime_type="application/json", response_schema=CheckOut,
-                                    temperature=0.0))
+                       response_mime_type="application/json", response_schema=CheckOut, temperature=0.0)
         return r.text or ""
 
 
@@ -148,6 +170,7 @@ class FakeGemini:
     """Offline stand-in used for tests and for running the site before a key is set."""
     fake = True
     model = "fake-offline"
+    last_model = "fake-offline"
 
     def answer(self, prompt: str) -> str:
         topic = re.sub(r"[?.!]+$", "", prompt.strip()) or "your question"
