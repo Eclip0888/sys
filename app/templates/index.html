@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
-  <h1>Do you really understand what the AI tells you?</h1>
-  <p>Ask an AI assistant whether a student will pass, read its explanation, and answer a few quick questions about it. It takes about 40 minutes.</p>
+  <h1>Ask the AI anything, and see if you really understood the answer.</h1>
+  <p>After every answer, the AI asks you one quick question. Tap your answer, and the system tells you right away whether you understood the AI's answer, and why.</p>
   <div class="row">
-    <a class="btn" href="{{ url_for('study.register') }}">Start</a>
-    <a class="btn ghost" href="{{ url_for('study.login') }}">I already have an account</a>
+    <a class="btn" href="{{ url_for('chat.register') }}">Create an account</a>
+    <a class="btn ghost" href="{{ url_for('chat.login') }}">Log in</a>
   </div>
 </section>
 <section class="card">
-  <h2>What you will do</h2>
+  <h2>How it works</h2>
   <ol class="steps">
-    <li>Agree to take part and fill in a short profile.</li>
-    <li>Answer 10 quick questions about AI (a warm-up, not graded).</li>
-    <li>Ask the AI 12 questions. After each answer, it asks you two questions about its explanation.</li>
-    <li>Finish with a short final check and see your results.</li>
+    <li>Type any question. Google Gemini answers it.</li>
+    <li>Below the answer, one multiple-choice question about it appears. Read the answer, then tap your choice.</li>
+    <li>The evaluation appears immediately: <b>Understood</b>, <b>Partly understood</b> or <b>Not understood</b>, with the reason.</li>
   </ol>
+  <p class="muted small">Your prompts and answers are stored under a code (for example U0012) for this thesis study. Do not type personal or sensitive information.</p>
 </section>
 {% endblock %}

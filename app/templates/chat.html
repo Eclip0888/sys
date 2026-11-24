@@ -1,19 +1,87 @@
 {% extends "base.html" %}
+{% block wrapclass %}chatwrap{% endblock %}
 {% block content %}
-<div class="progress"><div style="width: {{ ((round-1)/rounds*100)|round }}%"></div></div>
-<p class="muted small">Question {{ round }} of {{ rounds }} · the AI will explain this answer with <b>{{ kind }}</b></p>
-{% for h in history|reverse %}
-<div class="bubble user">{{ h.text }}</div>
-<div class="bubble ai">{{ h.label }} ({{ '%.0f'|format(h.prob_pass*100) }}% chance of passing)</div>
-{% endfor %}
+{% set cls = {'Understood': 'u', 'Partly understood': 'p', 'Not understood': 'n'} %}
+<div class="statline">
+  <span>Answers checked: <b>{{ n_done }}</b></span>
+  <span>Understood: <b>{{ understood }}</b></span>
+  {% if theta is not none %}<span>Your ability estimate: <b>{{ '%+.2f'|format(theta) }}</b></span>{% endif %}
+</div>
+{% if not items %}
 <section class="card">
-  <h2>Ask the AI about a student</h2>
-  <p class="muted small">Describe study habits in your own words: study hours, absences, sleep, assignments submitted, extracurricular or work hours, previous grade.</p>
-  <form method="post">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <textarea name="text" rows="3" required placeholder="e.g. Will I pass if I study 6 hours a week and have 3 absences?"></textarea>
-    <button class="btn wide">Send</button>
-  </form>
-  <details><summary>Need ideas?</summary><ul class="small">{% for e in examples %}<li>{{ e }}</li>{% endfor %}</ul></details>
+  <h2>Ask your first question</h2>
+  <p class="muted small">For example: "What is recursion and when should I use it?" or "How does a typhoon form?"</p>
 </section>
+{% endif %}
+{% for it in items %}
+<div id="i{{ it.id }}"></div>
+<div class="bubble user">{{ it.prompt }}</div>
+<div class="bubble ai"><div class="md">{{ render_md(it.answer) }}</div></div>
+{% if not it.question_ok %}
+  <p class="muted small">No comprehension question could be generated for this answer, so it was not evaluated.</p>
+{% elif it.skipped %}
+  <p class="muted small">You skipped the question for this answer.</p>
+{% elif it.correct is none %}
+<div class="qbox" id="q{{ it.id }}">
+  <div class="qhead">Quick check — did you understand the answer?</div>
+  <div class="qtext">{{ it.question }}</div>
+  <form method="post" action="{{ url_for('chat.respond', iid=it.id) }}" class="tapform">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="elapsed_ms" value="">
+    {% for o in it.options %}
+    <button class="tap" name="choice" value="{{ loop.index0 }}"><span class="letter">{{ 'ABCD'[loop.index0] }}</span>{{ o }}</button>
+    {% endfor %}
+  </form>
+  <form method="post" action="{{ url_for('chat.respond', iid=it.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="skip" name="skip" value="1">Skip this question</button>
+  </form>
+</div>
+{% else %}
+<div class="evalcard">
+  <div class="row1">
+    <span class="pill-label {{ cls[it.label] }}">{{ it.label }}</span>
+    <div class="scorebar"><div class="{{ cls[it.label] }}" style="width: {{ (it.score*100)|round|int }}%"></div></div>
+    <b>{{ (it.score*100)|round|int }}%</b>
+  </div>
+  <div class="opt-result {{ 'ok' if it.correct else 'bad' }}">Your answer: {{ 'ABCD'[it.chosen] }}. {{ it.options[it.chosen] }}</div>
+  {% if not it.correct %}<div class="opt-result ok">Correct answer: {{ 'ABCD'[it.key] }}. {{ it.options[it.key] }}</div>{% endif %}
+  <div class="reason">{{ it.reason }}</div>
+  <div class="detail">Question: {{ it.question }} · answered in {{ '%.1f'|format(it.seconds) }} s{% if it.w < 1 %} (counted as a possible guess){% endif %}</div>
+</div>
+{% endif %}
+{% endfor %}
+{% endblock %}
+{% block after %}
+<div class="composer">
+  <form method="post" action="{{ url_for('chat.ask') }}" id="askform">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="prompt" rows="1" placeholder="{{ 'Answer the quick check first…' if pending else 'Ask the AI anything…' }}" {% if pending %}disabled{% endif %} required maxlength="1500"></textarea>
+    <button class="btn" {% if pending %}disabled{% endif %}>Send</button>
+  </form>
+  <div class="thinking" id="thinking">The AI is answering and preparing your question…</div>
+</div>
+<script>
+(function () {
+  // response time: from the moment the question is on screen to the tap
+  var shown = performance.now();
+  document.querySelectorAll('.tapform').forEach(function (f) {
+    f.addEventListener('submit', function () {
+      f.querySelector('input[name=elapsed_ms]').value = Math.round(performance.now() - shown);
+      f.querySelectorAll('.tap').forEach(function (b) { setTimeout(function () { b.disabled = true; }, 0); });
+    });
+  });
+  var q = document.querySelector('.qbox');
+  (q || document.querySelector('.evalcard:last-of-type') || document.body).scrollIntoView({block: 'end'});
+  var ask = document.getElementById('askform');
+  ask.addEventListener('submit', function () {
+    document.getElementById('thinking').style.display = 'block';
+    ask.querySelector('button').disabled = true;
+  });
+  var ta = ask.querySelector('textarea');
+  ta.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && ta.value.trim()) { e.preventDefault(); ask.requestSubmit(); }
+  });
+})();
+</script>
 {% endblock %}
