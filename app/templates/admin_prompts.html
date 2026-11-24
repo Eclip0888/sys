@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+{% set active = 'prompts' %}{% include "_adminnav.html" %}
+{% if running %}<meta http-equiv="refresh" content="10">{% endif %}
+<section class="card">
+  <h1>Prompt set (Chapter 3, Data Generation)</h1>
+  <p class="small">Sends each prompt to Gemini, scores the answer's complexity and generates and checks one question. Prompts already answered in the same batch are skipped, so you can press Start again after a stop.</p>
+  {% if offline %}<p class="banner">Offline mode: results are placeholders. Set GEMINI_API_KEY first.</p>{% endif %}
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>Batch name<input name="batch" value="{{ batch }}" maxlength="40"></label>
+    <label>Prompt CSV (export of the prompt sheet). Leave empty to use the included 200 prompts.<input type="file" name="csvfile" accept=".csv"></label>
+    <button class="btn small" {% if running %}disabled{% endif %}>Start</button>
+  </form>
+  {% if status %}
+  <p class="small" style="margin-top:10px">Status: <b>{{ status.state }}</b> · {{ status.done }}/{{ status.total }} {% if status.last %}· last {{ status.last }}{% endif %} · {{ status.message }} · updated {{ status.updated }}</p>
+  {% if status.error %}<p class="flash">{{ status.error }}</p>{% endif %}
+  {% endif %}
+  {% if batches %}<p class="small muted">Batches: {% for b in batches %}<a href="{{ url_for('admin.prompts', batch=b) }}">{{ b }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+</section>
+<section class="card">
+  <h2>Table 2. Complexity of the answers (batch “{{ batch }}”)</h2>
+  <div class="tbl-wrap"><table class="small-tbl"><tr><th>Feature</th><th>n</th><th>Mean</th><th>SD</th><th>Min</th><th>Max</th></tr>
+  {% for r in t2 %}<tr><td>{{ r.feature }}</td><td>{{ r.n }}</td>{% for k in ['mean','sd','min','max'] %}<td>{{ '%.2f'|format(r[k]) if r[k] is not none else '—' }}</td>{% endfor %}</tr>{% endfor %}
+  </table></div>
+  <h2>Table 3. Question generation</h2>
+  <div class="tbl-wrap"><table class="small-tbl">
+    <tr><td>Prompts / answered</td><td>{{ t3.prompts }} / {{ t3.answered }}</td></tr>
+    <tr><td>Valid Gemini question outputs (criterion ≥ 95%)</td><td>{{ '%.1f%%'|format(t3.valid_output_pct) if t3.valid_output_pct is not none else '—' }}</td></tr>
+    <tr><td>Accepted on the first attempt</td><td>{{ '%.1f%%'|format(t3.first_try_pct) if t3.first_try_pct is not none else '—' }}</td></tr>
+    <tr><td>Accepted within three attempts (criterion ≥ 90%)</td><td>{{ '%.1f%%'|format(t3.accepted_pct) if t3.accepted_pct is not none else '—' }}</td></tr>
+    <tr><td>Mean Gemini time per answer and question (s)</td><td>{{ '%.1f'|format(t3.mean_seconds) if t3.mean_seconds is not none else '—' }}</td></tr>
+  </table></div>
+  <div class="row wrap" style="margin-top:8px">
+    <a class="btn small" href="{{ url_for('admin.export_prompts', what='results', batch=batch) }}">Download all results</a>
+    <a class="btn small" href="{{ url_for('admin.export_prompts', what='review', batch=batch) }}">Download review sheet (50 random questions)</a>
+  </div>
+</section>
+<section class="card">
+  <h2>Results</h2>
+  <div class="tbl-wrap"><table class="small-tbl"><tr><th>No.</th><th>Domain</th><th>Prompt</th><th>FKGL</th><th>Words</th><th>Level</th><th>Tries</th><th>Question</th></tr>
+  {% for r in runs %}<tr><td>{{ r.number }}</td><td>{{ r.domain }}</td><td>{{ r.prompt[:50] }}</td>
+    <td>{{ '%.1f'|format(r.features.fkgl) if r.features else '—' }}</td><td>{{ r.features.words if r.features else '—' }}</td>
+    <td>{{ r.level or '—' }}</td><td>{{ r.attempts or '—' }}</td><td>{{ (r.question[:60] if r.question_ok else ('failed: ' ~ (r.error or '')[:50])) }}</td></tr>{% endfor %}
+  </table></div>
+  {% if runs %}
+  <form method="post" action="{{ url_for('admin.delete_batch') }}" class="row" style="margin-top:10px">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="batch" value="{{ batch }}">
+    <input name="confirm" placeholder="type {{ batch }} to delete this batch" style="max-width:260px">
+    <button class="btn small ghost">Delete batch</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,13 +1,10 @@
-"""End-to-end test: one user goes through the whole sitting with the Flask test client."""
-import os
+"""End-to-end: register, ask, tap, see the evaluation; admin pages and exports."""
 import re
-import sys
 
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from app import create_app  # noqa: E402
-from app.models import Check, User, db  # noqa: E402
+from app import create_app, database_url
+from app.models import Interaction, PromptRun, db
 
 
 @pytest.fixture()
@@ -19,77 +16,94 @@ def client(tmp_path):
         yield c
 
 
-def walk_sitting(c, name="tester", pick=0):
-    r = c.post("/register", data={"username": name, "password": "secret1", "password2": "secret1"})
-    assert r.status_code == 302 and r.location.endswith("/consent")
-    c.post("/consent", data={"agree": "yes"})
-    c.post("/profile", data={"year_level": "3", "prog_courses": "3", "ai_courses": "1"})
-    from app.views import prior_items
-    c.post("/prior", data={it["item_id"]: it["answer"] for it in prior_items()})
-    c.post("/tutorial", data={})
-    for rnd in range(12):
-        r = c.post("/chat", data={"text": "Will I pass if I study 12 hours a week and have 2 absences?"})
-        assert b"Here is what I understood" in r.data
-        r = c.post("/ask", data={"text": "q", "study_hours": 12, "absences": 2, "sleep_hours": 7,
-                                 "assignments_done": 85, "extracurricular_hours": 4, "prev_grade": 84})
-        assert r.status_code == 302 and "/answer/" in r.location
-        for _ in range(2):
-            page = c.get(r.location).data.decode()
-            cid = re.search(r"/check/(\d+)", page).group(1)
-            r2 = c.post(f"/check/{cid}", data={"choice": pick, "confidence": 4, "trust": 3})
-            assert r2.status_code == 302
-    r = c.get("/final")
-    assert "/answer/" in r.location
-    for _ in range(6):
-        page = c.get(r.location).data.decode()
-        cid = re.search(r"/check/(\d+)", page).group(1)
-        c.post(f"/check/{cid}", data={"choice": pick, "confidence": 3, "trust": 3})
-    return c.get("/results")
+def register(c, name="tester"):
+    return c.post("/register", data={"username": name, "password": "secret1", "password2": "secret1"})
 
 
-def test_full_sitting(client):
-    r = walk_sitting(client)
-    assert r.status_code == 200 and b"Thank you for taking part" in r.data
+def test_database_url():
+    assert database_url("postgres://u:p@h/db") == "postgresql+psycopg2://u:p@h/db"
+    assert database_url("sqlite:///x.db") == "sqlite:///x.db"
+
+
+def test_chat_flow_with_evaluation(client):
+    register(client)
+    r = client.post("/ask", data={"prompt": "What is an algorithm?"}, follow_redirects=True)
+    page = r.data.decode()
+    assert "Quick check" in page and page.count('class="tap"') == 4
+    iid = int(re.search(r"/respond/(\d+)", page).group(1))
+    r = client.post(f"/respond/{iid}", data={"choice": 0, "elapsed_ms": 9000}, follow_redirects=True)
+    page = r.data.decode()
+    assert "Understood" in page and "evalcard" in page
     with client.app.app_context():
-        u = User.query.one()
-        assert u.stage == "done" and u.round == 12 and u.post_score is not None
-        main = Check.query.filter_by(user_id=u.id, phase="main").all()
-        assert len(main) == 24 and len({c.item_id for c in main}) == 24
-        assert {c.skill for c in main} == {"SHAP", "LIME", "CF"}
-        assert sorted(c.order for c in main) == list(range(1, 25))
-        assert Check.query.filter_by(user_id=u.id, phase="final").count() == 6
-        assert Check.query.filter_by(user_id=u.id, phase="prior").count() == 10
+        it = db.session.get(Interaction, iid)
+        assert it.correct == 1 and it.w == 1.0 and it.label == "Understood" and it.engine_ms is not None
+        assert it.features["level"] == 1 and it.question_words > 0
 
 
-def test_admin_export(client):
-    walk_sitting(client)
+def test_fast_tap_counts_as_possible_guess(client):
+    register(client)
+    page = client.post("/ask", data={"prompt": "Explain loops"}, follow_redirects=True).data.decode()
+    iid = int(re.search(r"/respond/(\d+)", page).group(1))
+    page = client.post(f"/respond/{iid}", data={"choice": 0, "elapsed_ms": 800}, follow_redirects=True).data.decode()
+    assert "possible guess" in page
+    with client.app.app_context():
+        assert db.session.get(Interaction, iid).w == 0.2
+
+
+def test_must_answer_before_next_prompt(client):
+    register(client)
+    client.post("/ask", data={"prompt": "first"})
+    r = client.post("/ask", data={"prompt": "second"}, follow_redirects=True)
+    assert b"answer or skip" in r.data
+    with client.app.app_context():
+        assert Interaction.query.count() == 1
+
+
+def test_skip(client):
+    register(client)
+    page = client.post("/ask", data={"prompt": "x?"}, follow_redirects=True).data.decode()
+    iid = int(re.search(r"/respond/(\d+)", page).group(1))
+    page = client.post(f"/respond/{iid}", data={"skip": 1}, follow_redirects=True).data.decode()
+    assert "skipped" in page
+
+
+def test_other_users_cannot_answer(client):
+    register(client, "alice")
+    page = client.post("/ask", data={"prompt": "x?"}, follow_redirects=True).data.decode()
+    iid = int(re.search(r"/respond/(\d+)", page).group(1))
+    client.get("/logout")
+    register(client, "bobby")
+    assert client.post(f"/respond/{iid}", data={"choice": 0}).status_code == 404
+
+
+def test_requires_login(client):
+    assert client.get("/chat").status_code == 302
+
+
+def test_admin_pages_and_exports(client):
+    register(client)
+    page = client.post("/ask", data={"prompt": "What is a loop?"}, follow_redirects=True).data.decode()
+    iid = int(re.search(r"/respond/(\d+)", page).group(1))
+    client.post(f"/respond/{iid}", data={"choice": 1, "elapsed_ms": 7000})
     assert client.get("/admin/").status_code == 302
     client.post("/admin/login", data={"password": "pw"})
-    assert b"Researcher dashboard" in client.get("/admin/").data
-    csv = client.get("/admin/export/responses.csv").data.decode().splitlines()
-    assert csv[0].startswith("user_id,session,order,item_id,skill,complexity,correct,confidence,trust")
-    assert len(csv) == 25
-    users = client.get("/admin/export/users.csv").data.decode().splitlines()
-    assert users[0].startswith("user_id,prior_knowledge,year_level,ai_courses,post_score") and len(users) == 2
+    assert b"Evaluation log" in client.get("/admin/").data
+    csv = client.get("/admin/export/interactions.csv").data.decode().splitlines()
+    assert csv[0].lstrip("﻿").startswith("id,user") and len(csv) == 2
+    assert b"Prompt set" in client.get("/admin/prompts").data
+    assert b"Simulation study" in client.get("/admin/simulation").data
 
 
-def test_parser_reads_numbers():
-    from app.predictor import parse_question
-    inp, found = parse_question("Will I pass if I study six hours a week and have 3 absences?")
-    assert inp["study_hours"] == 6 and inp["absences"] == 3 and set(found) == {"study_hours", "absences"}
-    inp, _ = parse_question("I study 2 hours per day")
-    assert inp["study_hours"] == 10
-
-
-def test_cannot_skip_ahead(client):
-    client.post("/register", data={"username": "skipper", "password": "secret1", "password2": "secret1"})
-    r = client.get("/chat")
-    assert r.status_code == 302 and r.location.endswith("/consent")
-
-
-def test_database_url_uses_installed_postgres_driver():
-    from app import database_url
-    assert database_url("postgres://u:p@host/db") == "postgresql+psycopg2://u:p@host/db"
-    assert database_url("postgresql://u:p@host/db?sslmode=require") == "postgresql+psycopg2://u:p@host/db?sslmode=require"
-    assert database_url("postgresql+psycopg2://u@h/d") == "postgresql+psycopg2://u@h/d"
-    assert database_url("sqlite:///x.db") == "sqlite:///x.db"
+def test_prompt_set_run_and_reports(client):
+    from app import jobs, reports
+    items = jobs.read_prompt_csv("No.,Prompt,Domain,Target difficulty\n1,What is X?,CS,Easy\n2,What is Y?,Math,Hard\n")
+    assert [i["number"] for i in items] == [1, 2]
+    jobs.run_prompt_set(client.app, items, "t")
+    jobs.run_prompt_set(client.app, items, "t")              # second run skips finished prompts
+    with client.app.app_context():
+        runs = reports.prompt_runs("t")
+        assert len(runs) == 2 and all(r.question_ok for r in runs)
+        t3 = reports.table3(runs)
+        assert t3["accepted_pct"] == 100 and t3["valid_output_pct"] == 100
+        assert reports.review_frame(runs).shape[0] == 2
+        assert PromptRun.query.count() == 2

@@ -1,0 +1,6 @@
+<div class="row wrap" style="margin: 6px 0 10px">
+  <a class="btn small {{ '' if active=='dash' else 'ghost' }}" href="{{ url_for('admin.dashboard') }}">Evaluation log</a>
+  <a class="btn small {{ '' if active=='prompts' else 'ghost' }}" href="{{ url_for('admin.prompts') }}">Prompt set</a>
+  <a class="btn small {{ '' if active=='sim' else 'ghost' }}" href="{{ url_for('admin.simulation') }}">Simulation</a>
+  <a class="btn small ghost" href="{{ url_for('admin.logout') }}">Log out</a>
+</div>
