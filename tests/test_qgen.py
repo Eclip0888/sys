@@ -52,3 +52,14 @@ class Flaky(FakeGemini):
 def test_recovers_on_second_attempt():
     r = generate_question(Flaky(), "p", "a")
     assert r.ok and r.attempts == 2 and not r.first_try
+
+
+def test_thinking_config_per_model():
+    from app.gemini import DEFAULT_MODEL, GeminiClient
+    c3 = GeminiClient("dummy-key", model="gemini-3.8-flash")
+    assert c3._config().thinking_config.thinking_level is not None
+    c25 = GeminiClient("dummy-key", model="gemini-2.5-flash")
+    assert c25._config().thinking_config.thinking_budget == 0
+    c3.use_thinking_config = False
+    assert c3._config().thinking_config is None
+    assert GeminiClient("dummy-key", model="").model == DEFAULT_MODEL
