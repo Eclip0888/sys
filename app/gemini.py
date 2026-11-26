@@ -31,7 +31,8 @@ AI answer below.
 Rules:
 - The question must be answerable from the AI answer alone, without outside knowledge.
 - Exactly 4 options, exactly one correct; wrong options must be plausible but clearly wrong according to the answer.
-- Keep the question under 30 words and each option under 20 words. No "all of the above" or "none of the above".
+- Keep the question under 30 words and each option under 20 words. No "all of the above" or "none of the above",
+  and do not refer to other options by letter or position (the options are shown in random order).
 - level: 1 = recall a fact stated in the answer, 2 = understand or explain an idea, 3 = apply or infer from the answer.
 - answer_index is the 0-based position of the correct option.
 

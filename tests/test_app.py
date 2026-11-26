@@ -31,7 +31,9 @@ def test_chat_flow_with_evaluation(client):
     page = r.data.decode()
     assert "Quick check" in page and page.count('class="tap"') == 4
     iid = int(re.search(r"/respond/(\d+)", page).group(1))
-    r = client.post(f"/respond/{iid}", data={"choice": 0, "elapsed_ms": 9000}, follow_redirects=True)
+    with client.app.app_context():
+        key = db.session.get(Interaction, iid).key      # options are shuffled, so read where the key landed
+    r = client.post(f"/respond/{iid}", data={"choice": key, "elapsed_ms": 9000}, follow_redirects=True)
     page = r.data.decode()
     assert "Understood" in page and "evalcard" in page
     with client.app.app_context():
