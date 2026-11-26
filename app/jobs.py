@@ -80,8 +80,11 @@ def process_prompt(client, batch: str, item: dict) -> PromptRun:
 def run_prompt_set(app, items: list[dict], batch: str):
     with app.app_context():
         client = get_client()
+        # A prompt is done when it has an answer and question generation actually ran (attempts recorded).
+        # Runs where the AI service failed during question generation have attempts = None and are retried.
         done_numbers = {n for (n,) in db.session.query(PromptRun.number).filter(PromptRun.batch == batch,
-                                                                                    PromptRun.answer.isnot(None))}
+                                                                                    PromptRun.answer.isnot(None),
+                                                                                    PromptRun.attempts.isnot(None))}
         todo = [it for it in items if it["number"] not in done_numbers]
         _status("prompts", state="running", batch=batch, done=len(items) - len(todo), total=len(items),
                 message=f"Model: {getattr(client, 'model', '?')}", error="")

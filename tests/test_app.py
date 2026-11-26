@@ -109,3 +109,27 @@ def test_prompt_set_run_and_reports(client):
         assert t3["accepted_pct"] == 100 and t3["valid_output_pct"] == 100
         assert reports.review_frame(runs).shape[0] == 2
         assert PromptRun.query.count() == 2
+
+
+def test_prompt_with_service_failure_during_question_is_retried(client):
+    """A prompt whose answer came back but whose question call hit a busy/quota error is run again on Start."""
+    from app import jobs
+    from app.gemini import FakeGemini, GeminiError, set_client
+
+    class QuestionDown(FakeGemini):
+        def question(self, prompt, answer):
+            raise GeminiError("all models are busy")
+
+    items = jobs.read_prompt_csv("No.,Prompt\n1,What is X?\n")
+    set_client(QuestionDown())
+    try:
+        jobs.run_prompt_set(client.app, items, "r")
+        with client.app.app_context():
+            pr = PromptRun.query.filter_by(batch="r").one()
+            assert pr.answer and not pr.question_ok and pr.attempts is None
+    finally:
+        set_client(FakeGemini())
+    jobs.run_prompt_set(client.app, items, "r")
+    with client.app.app_context():
+        pr = PromptRun.query.filter_by(batch="r").one()
+        assert pr.question_ok and pr.attempts == 1
