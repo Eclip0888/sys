@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import random
 import time
 from dataclasses import dataclass, field
 
@@ -35,13 +36,25 @@ def parse_question(text: str):
     return q, opts, key, level
 
 
+def shuffle_options(options: list, key: int, rng=None) -> tuple[list, int]:
+    """Put the four options in a random order and return (options, new key).
+
+    Generators tend to place the correct option first or second, which would let a user guess by position and
+    push the real guessing rate above the c = 0.25 the algorithm assumes. A uniform random order makes every
+    position equally likely to hold the key."""
+    rng = rng or random.SystemRandom()
+    order = list(range(len(options)))
+    rng.shuffle(order)
+    return [options[i] for i in order], order.index(key)
+
+
 def parse_check(text: str) -> int:
     return int(json.loads(text).get("answer_index", -1))
 
 
-def generate_question(client, prompt: str, answer: str) -> QuestionResult:
+def generate_question(client, prompt: str, answer: str, rng=None) -> QuestionResult:
     """Up to 3 attempts; accept a question only if its output is valid AND Gemini, answering from the text
-    alone, picks the same option as the key."""
+    alone, picks the same option as the key. The options of an accepted question are then shuffled."""
     t0 = time.monotonic()
     res = QuestionResult(ok=False)
     for attempt in range(1, MAX_ATTEMPTS + 1):
@@ -58,6 +71,7 @@ def generate_question(client, prompt: str, answer: str) -> QuestionResult:
             res.error = f"invalid check output: {e}"
             continue
         if picked == key:
+            opts, key = shuffle_options(opts, key, rng)
             res.ok, res.question, res.options, res.key, res.level = True, q, opts, key, level
             res.first_try = attempt == 1
             res.error = ""

@@ -1,10 +1,12 @@
 """Question generation: validation and self-consistency (Table 8, Correctness and Robustness)."""
 import json
+import random
+from collections import Counter
 
 import pytest
 
 from app.gemini import FakeGemini
-from app.qgen import generate_question, parse_question
+from app.qgen import generate_question, parse_question, shuffle_options
 
 
 def q(**kw):
@@ -37,6 +39,35 @@ def test_self_consistency_failure_retries_three_times():
 def test_invalid_output_is_counted():
     r = generate_question(FakeGemini(), "broken-json prompt", "text")
     assert not r.ok and r.valid_outputs == 0 and r.attempts == 3
+
+
+def test_shuffle_keeps_the_correct_option():
+    rng = random.Random(1)
+    for key in range(4):
+        opts = ["w0", "w1", "w2", "w3"]
+        opts[key] = "RIGHT"
+        new, k = shuffle_options(opts, key, rng)
+        assert sorted(new) == sorted(opts) and new[k] == "RIGHT"
+
+
+def test_shuffle_spreads_the_key_evenly():
+    """The generator puts the key at A almost always; after shuffling each position gets about 25%."""
+    rng = random.Random(7)
+    counts = Counter(shuffle_options(["k", "x", "y", "z"], 0, rng)[1] for _ in range(4000))
+    assert set(counts) == {0, 1, 2, 3}
+    assert all(0.22 < n / 4000 < 0.28 for n in counts.values())
+
+
+def test_generated_question_key_still_points_at_the_right_text():
+    fake = FakeGemini()
+    raw = parse_question(fake.question("What is an algorithm?", "An algorithm is a list of steps."))
+    right = raw[1][raw[2]]
+    keys = set()
+    for seed in range(20):
+        r = generate_question(fake, "What is an algorithm?", "An algorithm is a list of steps.", rng=random.Random(seed))
+        assert r.ok and r.options[r.key] == right
+        keys.add(r.key)
+    assert len(keys) > 1
 
 
 class Flaky(FakeGemini):
@@ -181,4 +212,4 @@ def test_qgen_through_chain_with_backup():
 
     backup, _ = _groq([_ok(q()), _ok('{"answer_index": 1}')])
     r = generate_question(ChainClient([Down(), backup]), "p", "a")
-    assert r.ok and r.key == 1
+    assert r.ok and r.options[r.key] == "b"
