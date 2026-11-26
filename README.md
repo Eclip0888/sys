@@ -75,7 +75,7 @@ saved with it (`model` column in the exports).
 
 **Backup provider (optional but recommended):** add `GROQ_API_KEY` (free key from https://console.groq.com).
 When every Gemini model fails, the app asks Groq instead (`GROQ_MODELS`, default
-`openai/gpt-oss-120b,llama-3.3-70b-versatile`; retired models are skipped automatically).
+`openai/gpt-oss-120b,openai/gpt-oss-20b`; retired models are skipped automatically).
 
 **Never put the API key in the code or in GitHub.** Only in Render's environment settings or your own terminal.
 

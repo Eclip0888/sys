@@ -7,7 +7,7 @@ GEMINI_FALLBACK_MODELS  comma-separated models to try when the main model is bus
                  default "gemini-3.7-flash,gemini-3.5-flash-lite"
 
 GROQ_API_KEY     optional backup provider (console.groq.com): used when every Gemini model is busy or out of quota
-GROQ_MODELS      comma-separated Groq models to try, default "openai/gpt-oss-120b,llama-3.3-70b-versatile"
+GROQ_MODELS      comma-separated Groq models to try, default "openai/gpt-oss-120b,openai/gpt-oss-20b"
 
 Without a key the app uses FakeGemini, an offline stand-in with fixed answers, so the website,
 the tests and the simulation can run before the key is set.
@@ -171,7 +171,7 @@ class GeminiClient:
 
 
 GROQ_URL = "https://api.groq.com/openai/v1"
-DEFAULT_GROQ_MODELS = "openai/gpt-oss-120b,llama-3.3-70b-versatile"
+DEFAULT_GROQ_MODELS = "openai/gpt-oss-120b,openai/gpt-oss-20b"
 JSON_QUESTION = ("\n\nRespond with ONLY a JSON object with these keys: question (string), options (array of exactly 4 "
                  "strings), answer_index (integer 0-3), level (integer 1-3).")
 JSON_CHECK = '\n\nRespond with ONLY a JSON object of the form {"answer_index": <integer 0-3>}.'
